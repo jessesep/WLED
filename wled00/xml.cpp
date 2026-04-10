@@ -134,21 +134,32 @@ static void appendGPIOinfo(Print& settingsScript)
   #if defined(ARDUINO_ARCH_ESP32) && defined(WLED_USE_ETHERNET)
   if (ethernetType != WLED_ETH_NONE && ethernetType < WLED_NUM_ETH_TYPES) {
     if (!firstPin) settingsScript.print(',');
-    for (unsigned p=0; p<WLED_ETH_RSVD_PINS_COUNT; p++) { settingsScript.printf("%d,",esp32_nonconfigurable_ethernet_pins[p].pin); }
-    if (ethernetBoards[ethernetType].eth_power >= 0)    { settingsScript.printf("%d,",ethernetBoards[ethernetType].eth_power); }
-    if (ethernetBoards[ethernetType].eth_mdc >= 0)      { settingsScript.printf("%d,",ethernetBoards[ethernetType].eth_mdc); }
-    if (ethernetBoards[ethernetType].eth_mdio >= 0)     { settingsScript.printf("%d,",ethernetBoards[ethernetType].eth_mdio); }
-    switch (ethernetBoards[ethernetType].eth_clk_mode)  {
-      case ETH_CLOCK_GPIO0_IN:
-      case ETH_CLOCK_GPIO0_OUT:
-        settingsScript.print(0);
-        break;
-      case ETH_CLOCK_GPIO16_OUT:
-        settingsScript.print(16);
-        break;
-      case ETH_CLOCK_GPIO17_OUT:
-        settingsScript.print(17);
-        break;
+    #ifdef WLED_ETH_W5500
+    if (ethernetType == WLED_ETH_W5500_SPI) {
+      // W5500 SPI pins
+      settingsScript.printf("%d,%d,%d,%d,%d,%d",
+        WLED_ETH_W5500_MOSI, WLED_ETH_W5500_MISO, WLED_ETH_W5500_SCK,
+        WLED_ETH_W5500_CS, WLED_ETH_W5500_INT, WLED_ETH_W5500_RST);
+    } else
+    #endif
+    {
+      // RMII ethernet pins
+      for (unsigned p=0; p<WLED_ETH_RSVD_PINS_COUNT; p++) { settingsScript.printf("%d,",esp32_nonconfigurable_ethernet_pins[p].pin); }
+      if (ethernetBoards[ethernetType].eth_power >= 0)    { settingsScript.printf("%d,",ethernetBoards[ethernetType].eth_power); }
+      if (ethernetBoards[ethernetType].eth_mdc >= 0)      { settingsScript.printf("%d,",ethernetBoards[ethernetType].eth_mdc); }
+      if (ethernetBoards[ethernetType].eth_mdio >= 0)     { settingsScript.printf("%d,",ethernetBoards[ethernetType].eth_mdio); }
+      switch (ethernetBoards[ethernetType].eth_clk_mode)  {
+        case ETH_CLOCK_GPIO0_IN:
+        case ETH_CLOCK_GPIO0_OUT:
+          settingsScript.print(0);
+          break;
+        case ETH_CLOCK_GPIO16_OUT:
+          settingsScript.print(16);
+          break;
+        case ETH_CLOCK_GPIO17_OUT:
+          settingsScript.print(17);
+          break;
+      }
     }
   }
   #endif

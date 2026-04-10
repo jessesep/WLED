@@ -30,6 +30,51 @@ extern const ethernet_settings ethernetBoards[];
 
 #define WLED_ETH_RSVD_PINS_COUNT 6
 extern const managed_pin_type esp32_nonconfigurable_ethernet_pins[WLED_ETH_RSVD_PINS_COUNT];
+
+// W5500 SPI Ethernet support
+// Uses the ESP-IDF SPI ethernet driver (not the Arduino ETH class RMII path)
+// Configurable via build flags:
+//   -D WLED_ETH_W5500_MOSI=23
+//   -D WLED_ETH_W5500_MISO=19
+//   -D WLED_ETH_W5500_SCK=18
+//   -D WLED_ETH_W5500_CS=5
+//   -D WLED_ETH_W5500_INT=4
+//   -D WLED_ETH_W5500_RST=-1   (set to -1 if RST is tied high on PCB)
+#ifdef WLED_ETH_W5500
+
+#ifndef WLED_ETH_W5500_MOSI
+  #define WLED_ETH_W5500_MOSI 23
+#endif
+#ifndef WLED_ETH_W5500_MISO
+  #define WLED_ETH_W5500_MISO 19
+#endif
+#ifndef WLED_ETH_W5500_SCK
+  #define WLED_ETH_W5500_SCK 18
+#endif
+#ifndef WLED_ETH_W5500_CS
+  #define WLED_ETH_W5500_CS 5
+#endif
+#ifndef WLED_ETH_W5500_INT
+  #define WLED_ETH_W5500_INT 4
+#endif
+#ifndef WLED_ETH_W5500_RST
+  #define WLED_ETH_W5500_RST -1
+#endif
+#ifndef WLED_ETH_W5500_SPI_CLOCK_MHZ
+  #define WLED_ETH_W5500_SPI_CLOCK_MHZ 25
 #endif
 
+bool initW5500Ethernet();
+
+// W5500 SPI pins reserved count: MOSI, MISO, SCK, CS, INT (+ RST if >= 0)
+#if WLED_ETH_W5500_RST >= 0
+  #define WLED_ETH_W5500_RSVD_PINS_COUNT 6
+#else
+  #define WLED_ETH_W5500_RSVD_PINS_COUNT 5
 #endif
+
+#endif // WLED_ETH_W5500
+
+#endif // WLED_USE_ETHERNET
+
+#endif // WLED_ETHERNET_H

@@ -2,6 +2,284 @@
 #include "fcn_declare.h"
 #include "wled_ethernet.h"
 
+#if defined(ARDUINO_ARCH_ESP32) && defined(WLED_USE_ETHERNET) && defined(WLED_ETH_W5500)
+#include "esp_eth.h"
+#include "esp_eth_netif_glue.h"
+#include "esp_netif.h"
+#include "esp_event.h"
+#include "driver/gpio.h"
+#include "driver/spi_master.h"
+
+// W5500 SPI Ethernet globals
+static esp_netif_t *w5500_netif = nullptr;
+static esp_eth_handle_t w5500_eth_handle = nullptr;
+static bool w5500_link_up = false;
+static bool w5500_got_ip = false;
+
+// Event handler for W5500 ethernet events
+static void w5500_eth_event_handler(void *arg, esp_event_base_t event_base,
+                                     int32_t event_id, void *event_data)
+{
+  if (event_base == ETH_EVENT) {
+    switch (event_id) {
+      case ETHERNET_EVENT_CONNECTED:
+        DEBUG_PRINTLN(F("W5500-E: Link Up"));
+        w5500_link_up = true;
+        if (!apActive) {
+          WiFi.disconnect(true);
+        }
+        showWelcomePage = false;
+        break;
+      case ETHERNET_EVENT_DISCONNECTED:
+        DEBUG_PRINTLN(F("W5500-E: Link Down"));
+        w5500_link_up = false;
+        w5500_got_ip = false;
+        forceReconnect = true;
+        break;
+      case ETHERNET_EVENT_START:
+        DEBUG_PRINTLN(F("W5500-E: Started"));
+        break;
+      case ETHERNET_EVENT_STOP:
+        DEBUG_PRINTLN(F("W5500-E: Stopped"));
+        w5500_link_up = false;
+        w5500_got_ip = false;
+        break;
+      default:
+        break;
+    }
+  } else if (event_base == IP_EVENT && event_id == IP_EVENT_ETH_GOT_IP) {
+    ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+    DEBUG_PRINTF_P(PSTR("W5500-E: Got IP: " IPSTR "\n"), IP2STR(&event->ip_info.ip));
+    w5500_got_ip = true;
+  }
+}
+
+// Accessors for W5500 state - used by Network class
+bool isW5500Connected() {
+  return w5500_link_up && w5500_got_ip;
+}
+
+IPAddress getW5500LocalIP() {
+  if (!w5500_netif) return IPAddress((uint32_t)0);
+  esp_netif_ip_info_t ip_info;
+  if (esp_netif_get_ip_info(w5500_netif, &ip_info) == ESP_OK) {
+    return IPAddress(ip_info.ip.addr);
+  }
+  return IPAddress((uint32_t)0);
+}
+
+IPAddress getW5500SubnetMask() {
+  if (!w5500_netif) return IPAddress(255, 255, 255, 0);
+  esp_netif_ip_info_t ip_info;
+  if (esp_netif_get_ip_info(w5500_netif, &ip_info) == ESP_OK) {
+    return IPAddress(ip_info.netmask.addr);
+  }
+  return IPAddress(255, 255, 255, 0);
+}
+
+IPAddress getW5500GatewayIP() {
+  if (!w5500_netif) return INADDR_NONE;
+  esp_netif_ip_info_t ip_info;
+  if (esp_netif_get_ip_info(w5500_netif, &ip_info) == ESP_OK) {
+    return IPAddress(ip_info.gw.addr);
+  }
+  return INADDR_NONE;
+}
+
+void getW5500MAC(uint8_t *mac) {
+  if (w5500_netif) {
+    esp_netif_get_mac(w5500_netif, mac);
+  } else {
+    memset(mac, 0, 6);
+  }
+}
+
+bool initW5500Ethernet()
+{
+  static bool w5500_initialized = false;
+  if (w5500_initialized) return false;
+
+  DEBUG_PRINTLN(F("W5500: Initializing SPI Ethernet..."));
+
+  // Ensure the TCP/IP stack and event loop are initialized
+  // (normally done by WiFi, but might not be if WiFi is disabled)
+  esp_err_t err = esp_netif_init();
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) { // ESP_ERR_INVALID_STATE means already initialized
+    DEBUG_PRINTF_P(PSTR("W5500: esp_netif_init failed: %d\n"), err);
+    return false;
+  }
+  err = esp_event_loop_create_default();
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) { // already created is fine
+    DEBUG_PRINTF_P(PSTR("W5500: event loop create failed: %d\n"), err);
+    return false;
+  }
+
+  // Allocate SPI pins via WLED pin manager
+  // RST pin is only included if it is a valid GPIO (>= 0)
+  managed_pin_type w5500_pins[WLED_ETH_W5500_RSVD_PINS_COUNT] = {
+    { (int8_t)WLED_ETH_W5500_MOSI, true  },
+    { (int8_t)WLED_ETH_W5500_MISO, false },
+    { (int8_t)WLED_ETH_W5500_SCK,  true  },
+    { (int8_t)WLED_ETH_W5500_CS,   true  },
+    { (int8_t)WLED_ETH_W5500_INT,  false },
+#if WLED_ETH_W5500_RST >= 0
+    { (int8_t)WLED_ETH_W5500_RST,  true  },
+#endif
+  };
+
+  if (!PinManager::allocateMultiplePins(w5500_pins, WLED_ETH_W5500_RSVD_PINS_COUNT, PinOwner::Ethernet)) {
+    DEBUG_PRINTLN(F("W5500: Failed to allocate SPI pins"));
+    return false;
+  }
+
+  // Hardware reset the W5500 if RST pin is valid (tied high on PCB = no reset needed)
+#if WLED_ETH_W5500_RST >= 0
+  gpio_set_direction((gpio_num_t)WLED_ETH_W5500_RST, GPIO_MODE_OUTPUT);
+  gpio_set_level((gpio_num_t)WLED_ETH_W5500_RST, 0);
+  vTaskDelay(pdMS_TO_TICKS(10));
+  gpio_set_level((gpio_num_t)WLED_ETH_W5500_RST, 1);
+  vTaskDelay(pdMS_TO_TICKS(50));
+#endif
+
+  // Initialize SPI bus
+  spi_bus_config_t buscfg = {};
+  buscfg.mosi_io_num = WLED_ETH_W5500_MOSI;
+  buscfg.miso_io_num = WLED_ETH_W5500_MISO;
+  buscfg.sclk_io_num = WLED_ETH_W5500_SCK;
+  buscfg.quadwp_io_num = -1;
+  buscfg.quadhd_io_num = -1;
+
+  esp_err_t ret = spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_CH_AUTO);
+  if (ret != ESP_OK) {
+    DEBUG_PRINTF_P(PSTR("W5500: SPI bus init failed: %d\n"), ret);
+    for (auto &mpt : w5500_pins) PinManager::deallocatePin(mpt.pin, PinOwner::Ethernet);
+    return false;
+  }
+
+  // Add W5500 SPI device
+  spi_device_interface_config_t devcfg = {};
+  devcfg.command_bits = 16;  // W5500 address phase
+  devcfg.address_bits = 8;   // W5500 control phase
+  devcfg.mode = 0;
+  devcfg.clock_speed_hz = WLED_ETH_W5500_SPI_CLOCK_MHZ * 1000 * 1000;
+  devcfg.spics_io_num = WLED_ETH_W5500_CS;
+  devcfg.queue_size = 20;
+
+  spi_device_handle_t spi_handle = nullptr;
+  ret = spi_bus_add_device(SPI3_HOST, &devcfg, &spi_handle);
+  if (ret != ESP_OK) {
+    DEBUG_PRINTF_P(PSTR("W5500: SPI device add failed: %d\n"), ret);
+    spi_bus_free(SPI3_HOST);
+    for (auto &mpt : w5500_pins) PinManager::deallocatePin(mpt.pin, PinOwner::Ethernet);
+    return false;
+  }
+
+  // W5500 MAC driver config
+  eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(spi_handle);
+  w5500_config.int_gpio_num = (gpio_num_t)WLED_ETH_W5500_INT;
+
+  // MAC config
+  eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
+  esp_eth_mac_t *mac = esp_eth_mac_new_w5500(&w5500_config, &mac_config);
+  if (!mac) {
+    DEBUG_PRINTLN(F("W5500: MAC creation failed"));
+    spi_bus_remove_device(spi_handle);
+    spi_bus_free(SPI3_HOST);
+    for (auto &mpt : w5500_pins) PinManager::deallocatePin(mpt.pin, PinOwner::Ethernet);
+    return false;
+  }
+
+  // PHY config
+  eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
+  phy_config.phy_addr = 1;
+  phy_config.reset_gpio_num = -1; // already reset via GPIO above
+  esp_eth_phy_t *phy = esp_eth_phy_new_w5500(&phy_config);
+  if (!phy) {
+    DEBUG_PRINTLN(F("W5500: PHY creation failed"));
+    mac->del(mac);
+    spi_bus_remove_device(spi_handle);
+    spi_bus_free(SPI3_HOST);
+    for (auto &mpt : w5500_pins) PinManager::deallocatePin(mpt.pin, PinOwner::Ethernet);
+    return false;
+  }
+
+  // Install Ethernet driver
+  esp_eth_config_t eth_config = ETH_DEFAULT_CONFIG(mac, phy);
+  ret = esp_eth_driver_install(&eth_config, &w5500_eth_handle);
+  if (ret != ESP_OK) {
+    DEBUG_PRINTF_P(PSTR("W5500: Driver install failed: %d\n"), ret);
+    phy->del(phy);
+    mac->del(mac);
+    spi_bus_remove_device(spi_handle);
+    spi_bus_free(SPI3_HOST);
+    for (auto &mpt : w5500_pins) PinManager::deallocatePin(mpt.pin, PinOwner::Ethernet);
+    return false;
+  }
+
+  // Create netif for W5500
+  esp_netif_config_t netif_config = ESP_NETIF_DEFAULT_ETH();
+  w5500_netif = esp_netif_new(&netif_config);
+  if (!w5500_netif) {
+    DEBUG_PRINTLN(F("W5500: netif creation failed"));
+    esp_eth_driver_uninstall(w5500_eth_handle);
+    spi_bus_remove_device(spi_handle);
+    spi_bus_free(SPI3_HOST);
+    for (auto &mpt : w5500_pins) PinManager::deallocatePin(mpt.pin, PinOwner::Ethernet);
+    return false;
+  }
+
+  // Set hostname
+  char hostname[64] = {'\0'};
+  getWLEDhostname(hostname, sizeof(hostname), true);
+  esp_netif_set_hostname(w5500_netif, hostname);
+
+  // Attach driver to netif
+  esp_eth_netif_glue_handle_t glue = esp_eth_new_netif_glue(w5500_eth_handle);
+  ret = esp_netif_attach(w5500_netif, glue);
+  if (ret != ESP_OK) {
+    DEBUG_PRINTF_P(PSTR("W5500: netif attach failed: %d\n"), ret);
+    esp_netif_destroy(w5500_netif);
+    w5500_netif = nullptr;
+    esp_eth_driver_uninstall(w5500_eth_handle);
+    spi_bus_remove_device(spi_handle);
+    spi_bus_free(SPI3_HOST);
+    for (auto &mpt : w5500_pins) PinManager::deallocatePin(mpt.pin, PinOwner::Ethernet);
+    return false;
+  }
+
+  // Register event handlers
+  esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &w5500_eth_event_handler, NULL);
+  esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &w5500_eth_event_handler, NULL);
+
+  // Configure static IP if set, otherwise DHCP (default)
+  if (multiWiFi[0].staticIP != (uint32_t)0x00000000 && multiWiFi[0].staticGW != (uint32_t)0x00000000) {
+    esp_netif_dhcpc_stop(w5500_netif);
+    esp_netif_ip_info_t ip_info = {};
+    ip_info.ip.addr = (uint32_t)multiWiFi[0].staticIP;
+    ip_info.gw.addr = (uint32_t)multiWiFi[0].staticGW;
+    ip_info.netmask.addr = (uint32_t)multiWiFi[0].staticSN;
+    esp_netif_set_ip_info(w5500_netif, &ip_info);
+
+    // Set DNS
+    esp_netif_dns_info_t dns;
+    dns.ip.u_addr.ip4.addr = (uint32_t)dnsAddress;
+    dns.ip.type = IPADDR_TYPE_V4;
+    esp_netif_set_dns_info(w5500_netif, ESP_NETIF_DNS_MAIN, &dns);
+  }
+
+  // Start Ethernet
+  ret = esp_eth_start(w5500_eth_handle);
+  if (ret != ESP_OK) {
+    DEBUG_PRINTF_P(PSTR("W5500: Start failed: %d\n"), ret);
+    return false;
+  }
+
+  w5500_initialized = true;
+  DEBUG_PRINTLN(F("W5500: *** SPI Ethernet successfully initialized! ***"));
+  return true;
+}
+
+#endif // WLED_ETH_W5500
 
 #if defined(ARDUINO_ARCH_ESP32) && defined(WLED_USE_ETHERNET)
 // The following six pins are neither configurable nor
@@ -148,12 +426,17 @@ const ethernet_settings ethernetBoards[] = {
 
  // Gledopto Series With Ethernet
  {
-    1,                    // eth_address, 
-    5,                    // eth_power, 
-    23,                   // eth_mdc, 
-    33,                   // eth_mdio, 
+    1,                    // eth_address,
+    5,                    // eth_power,
+    23,                   // eth_mdc,
+    33,                   // eth_mdio,
     ETH_PHY_LAN8720,      // eth_type,
     ETH_CLOCK_GPIO0_IN	 // eth_clk_mode
+  },
+
+  // W5500 SPI Ethernet (placeholder - actual init uses separate SPI path)
+  // Pins are configured via WLED_ETH_W5500_* build flags, not via this struct
+  {
   },
 };
 
@@ -174,6 +457,14 @@ bool initEthernet()
   }
 
   DEBUG_PRINTF_P(PSTR("initE: Attempting ETH config: %d\n"), ethernetType);
+
+  // W5500 SPI Ethernet - separate init path (not RMII)
+  #ifdef WLED_ETH_W5500
+  if (ethernetType == WLED_ETH_W5500_SPI) {
+    successfullyConfiguredEthernet = initW5500Ethernet();
+    return successfullyConfiguredEthernet;
+  }
+  #endif
 
   // Ethernet initialization should only succeed once -- else reboot required
   ethernet_settings es = ethernetBoards[ethernetType];
@@ -442,9 +733,16 @@ void WiFiEvent(WiFiEvent_t event)
       if (!apActive) {
         WiFi.disconnect(true); // disable WiFi entirely
       }
-      char hostname[64] = {'\0'}; // any "hostname" within a Fully Qualified Domain Name (FQDN) must not exceed 63 characters
-      getWLEDhostname(hostname, sizeof(hostname), true); // create DNS name based on mDNS name if set, or fall back to standard WLED server name
-      ETH.setHostname(hostname);
+      #ifdef WLED_ETH_W5500
+      // W5500 hostname is set during initW5500Ethernet() via esp_netif_set_hostname()
+      // Only call ETH.setHostname() for RMII ethernet boards
+      if (ethernetType != WLED_ETH_W5500_SPI)
+      #endif
+      {
+        char hostname[64] = {'\0'}; // any "hostname" within a Fully Qualified Domain Name (FQDN) must not exceed 63 characters
+        getWLEDhostname(hostname, sizeof(hostname), true); // create DNS name based on mDNS name if set, or fall back to standard WLED server name
+        ETH.setHostname(hostname);
+      }
       showWelcomePage = false;
       break;
       }
