@@ -1,6 +1,9 @@
 #include "wled.h"
 #include "fcn_declare.h"
 #include "wled_ethernet.h"
+#if defined(ARDUINO_ARCH_ESP32) && defined(WLED_USE_ETHERNET)
+#include <driver/spi_master.h>  // for spi_host_device_t, SPI3_HOST
+#endif
 
 
 #if defined(ARDUINO_ARCH_ESP32) && defined(WLED_USE_ETHERNET)
@@ -19,142 +22,114 @@ const managed_pin_type esp32_nonconfigurable_ethernet_pins[WLED_ETH_RSVD_PINS_CO
 const ethernet_settings ethernetBoards[] = {
   // None
   {
+    0, 0, 0, 0, ETH_PHY_LAN8720, ETH_CLOCK_GPIO0_IN,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
   // WT32-EHT01
   // Please note, from my testing only these pins work for LED outputs:
   //   IO2, IO4, IO12, IO14, IO15
-  // These pins do not appear to work from my testing:
-  //   IO35, IO36, IO39
   {
-    1,                    // eth_address,
-    16,                   // eth_power,
-    23,                   // eth_mdc,
-    18,                   // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO0_IN    // eth_clk_mode
+    1, 16, 23, 18, ETH_PHY_LAN8720, ETH_CLOCK_GPIO0_IN,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
   // ESP32-POE
   {
-     0,                   // eth_address,
-    12,                   // eth_power,
-    23,                   // eth_mdc,
-    18,                   // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO17_OUT  // eth_clk_mode
+    0, 12, 23, 18, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
-   // WESP32
+  // WESP32
   {
-    0,			              // eth_address,
-    -1,			              // eth_power,
-    16,			              // eth_mdc,
-    17,			              // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO0_IN	  // eth_clk_mode
+    0, -1, 16, 17, ETH_PHY_LAN8720, ETH_CLOCK_GPIO0_IN,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
   // QuinLed-ESP32-Ethernet
   {
-    0,			              // eth_address,
-    5,			              // eth_power,
-    23,			              // eth_mdc,
-    18,			              // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO17_OUT	// eth_clk_mode
+    0, 5, 23, 18, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
   // TwilightLord-ESP32 Ethernet Shield
   {
-    0,			              // eth_address,
-    5,			              // eth_power,
-    23,			              // eth_mdc,
-    18,			              // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO17_OUT	// eth_clk_mode
+    0, 5, 23, 18, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
   // ESP3DEUXQuattro
   {
-    1,                    // eth_address,
-    -1,                   // eth_power,
-    23,                   // eth_mdc,
-    18,                   // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO17_OUT  // eth_clk_mode
+    1, -1, 23, 18, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
   // ESP32-ETHERNET-KIT-VE
   {
-    0,                    // eth_address,
-    5,                    // eth_power,
-    23,                   // eth_mdc,
-    18,                   // eth_mdio,
-    ETH_PHY_IP101,        // eth_type,
-    ETH_CLOCK_GPIO0_IN    // eth_clk_mode
+    0, 5, 23, 18, ETH_PHY_IP101, ETH_CLOCK_GPIO0_IN,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
   // QuinLed-Dig-Octa Brainboard-32-8L and LilyGO-T-ETH-POE
   {
-    0,			              // eth_address,
-    -1,			              // eth_power,
-    23,			              // eth_mdc,
-    18,			              // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO17_OUT	// eth_clk_mode
+    0, -1, 23, 18, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
   // ABC! WLED Controller V43 + Ethernet Shield & compatible
   {
-    1,                    // eth_address, 
-    5,                    // eth_power, 
-    23,                   // eth_mdc, 
-    33,                   // eth_mdio, 
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO17_OUT	// eth_clk_mode
+    1, 5, 23, 33, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
   // Serg74-ESP32 Ethernet Shield
   {
-    1,                    // eth_address,
-    5,                    // eth_power,
-    23,                   // eth_mdc,
-    18,                   // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO17_OUT  // eth_clk_mode
+    1, 5, 23, 18, ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
   // ESP32-POE-WROVER
   {
-    0,                    // eth_address,
-    12,                   // eth_power,
-    23,                   // eth_mdc,
-    18,                   // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO0_OUT   // eth_clk_mode
-  },
-  
-  // LILYGO T-POE Pro
-  // https://github.com/Xinyuan-LilyGO/LilyGO-T-ETH-Series/blob/master/schematic/T-POE-PRO.pdf
-  {
-    0,			              // eth_address,
-    5,			              // eth_power,
-    23,			              // eth_mdc,
-    18,			              // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO0_OUT	// eth_clk_mode
+    0, 12, 23, 18, ETH_PHY_LAN8720, ETH_CLOCK_GPIO0_OUT,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
 
- // Gledopto Series With Ethernet
- {
-    1,                    // eth_address,
-    5,                    // eth_power,
-    23,                   // eth_mdc,
-    33,                   // eth_mdio,
-    ETH_PHY_LAN8720,      // eth_type,
-    ETH_CLOCK_GPIO0_IN	 // eth_clk_mode
+  // LILYGO T-POE Pro
+  {
+    0, 5, 23, 18, ETH_PHY_LAN8720, ETH_CLOCK_GPIO0_OUT,
+    0, 0, 0, 0, 0, 0  // SPI: unused
   },
+
+  // Gledopto Series With Ethernet
+  {
+    1, 5, 23, 33, ETH_PHY_LAN8720, ETH_CLOCK_GPIO0_IN,
+    0, 0, 0, 0, 0, 0  // SPI: unused
+  },
+
+#if CONFIG_ETH_SPI_ETHERNET_W5500
+  // W5500 SPI Ethernet (custom board by Matthijs Dethmers)
+  // SPI: MOSI=23, MISO=19, SCK=18, CS=5, INT=4, RST=-1 (tied high)
+  {
+    1,                    // eth_address
+    -1,                   // eth_power (unused for SPI)
+    -1,                   // eth_mdc   (unused for SPI)
+    -1,                   // eth_mdio  (unused for SPI)
+    ETH_PHY_W5500,        // eth_type
+    ETH_CLOCK_GPIO0_IN,   // eth_clk_mode (unused for SPI)
+    23,                   // eth_mosi
+    19,                   // eth_miso
+    18,                   // eth_sck
+    5,                    // eth_cs
+    4,                    // eth_irq
+    -1                    // eth_rst (tied high on PCB)
+  },
+#else
+  // W5500 placeholder when SPI ethernet not available
+  {
+    0, 0, 0, 0, ETH_PHY_LAN8720, ETH_CLOCK_GPIO0_IN,
+    0, 0, 0, 0, 0, 0
+  },
+#endif
 };
 
 bool initEthernet()
@@ -177,85 +152,127 @@ bool initEthernet()
 
   // Ethernet initialization should only succeed once -- else reboot required
   ethernet_settings es = ethernetBoards[ethernetType];
-  managed_pin_type pinsToAllocate[10] = {
-    // first six pins are non-configurable
-    esp32_nonconfigurable_ethernet_pins[0],
-    esp32_nonconfigurable_ethernet_pins[1],
-    esp32_nonconfigurable_ethernet_pins[2],
-    esp32_nonconfigurable_ethernet_pins[3],
-    esp32_nonconfigurable_ethernet_pins[4],
-    esp32_nonconfigurable_ethernet_pins[5],
-    { (int8_t)es.eth_mdc,   true },  // [6] = MDC  is output and mandatory
-    { (int8_t)es.eth_mdio,  true },  // [7] = MDIO is bidirectional and mandatory
-    { (int8_t)es.eth_power, true },  // [8] = optional pin, not all boards use
-    { ((int8_t)0xFE),       false }, // [9] = replaced with eth_clk_mode, mandatory
-  };
-  // update the clock pin....
-  if (es.eth_clk_mode == ETH_CLOCK_GPIO0_IN) {
-    pinsToAllocate[9].pin = 0;
-    pinsToAllocate[9].isOutput = false;
-  } else if (es.eth_clk_mode == ETH_CLOCK_GPIO0_OUT) {
-    pinsToAllocate[9].pin = 0;
-    pinsToAllocate[9].isOutput = true;
-  } else if (es.eth_clk_mode == ETH_CLOCK_GPIO16_OUT) {
-    pinsToAllocate[9].pin = 16;
-    pinsToAllocate[9].isOutput = true;
-  } else if (es.eth_clk_mode == ETH_CLOCK_GPIO17_OUT) {
-    pinsToAllocate[9].pin = 17;
-    pinsToAllocate[9].isOutput = true;
+
+  bool ethBeginSuccess = false;
+
+  if (isEthernetSPI(es.eth_type)) {
+    // SPI-based ethernet (W5500, DM9051, KSZ8851SNL)
+    // No RMII pins needed - only allocate SPI pins
+    managed_pin_type spiPins[4] = {
+      { (int8_t)es.eth_cs,   true  },  // CS
+      { (int8_t)es.eth_irq,  false },  // IRQ (input)
+      { (int8_t)es.eth_sck,  true  },  // SCK
+      { (int8_t)es.eth_mosi, true  },  // MOSI
+    };
+    // Only allocate pins that are valid (>= 0)
+    unsigned pinCount = 0;
+    managed_pin_type validPins[6];
+    if (es.eth_cs >= 0)   validPins[pinCount++] = { (int8_t)es.eth_cs,   true  };
+    if (es.eth_irq >= 0)  validPins[pinCount++] = { (int8_t)es.eth_irq,  false };
+    if (es.eth_sck >= 0)  validPins[pinCount++] = { (int8_t)es.eth_sck,  true  };
+    if (es.eth_mosi >= 0) validPins[pinCount++] = { (int8_t)es.eth_mosi, true  };
+    if (es.eth_miso >= 0) validPins[pinCount++] = { (int8_t)es.eth_miso, false };
+    if (es.eth_rst >= 0)  validPins[pinCount++] = { (int8_t)es.eth_rst,  true  };
+
+    if (pinCount > 0 && !PinManager::allocateMultiplePins(validPins, pinCount, PinOwner::Ethernet)) {
+      DEBUG_PRINTLN(F("initE: Failed to allocate SPI ethernet pins"));
+      return false;
+    }
+
+    DEBUG_PRINTF_P(PSTR("initE: SPI ETH - CS=%d IRQ=%d RST=%d SCK=%d MOSI=%d MISO=%d\n"),
+                   es.eth_cs, es.eth_irq, es.eth_rst, es.eth_sck, es.eth_mosi, es.eth_miso);
+
+    ethBeginSuccess = ETH.begin(
+      es.eth_type,
+      (int32_t)es.eth_address,
+      es.eth_cs,
+      es.eth_irq,
+      es.eth_rst,
+      SPI3_HOST,       // VSPI_HOST on ESP32
+      es.eth_sck,
+      es.eth_miso,
+      es.eth_mosi
+    );
+
+    if (!ethBeginSuccess) {
+      DEBUG_PRINTLN(F("initE: ETH.begin() failed (SPI)"));
+      for (unsigned i = 0; i < pinCount; i++) {
+        PinManager::deallocatePin(validPins[i].pin, PinOwner::Ethernet);
+      }
+      return false;
+    }
   } else {
-    DEBUG_PRINTF_P(PSTR("initE: Failing due to invalid eth_clk_mode (%d)\n"), es.eth_clk_mode);
-    return false;
-  }
+    // RMII-based ethernet (LAN8720, IP101, etc.)
+    managed_pin_type pinsToAllocate[10] = {
+      esp32_nonconfigurable_ethernet_pins[0],
+      esp32_nonconfigurable_ethernet_pins[1],
+      esp32_nonconfigurable_ethernet_pins[2],
+      esp32_nonconfigurable_ethernet_pins[3],
+      esp32_nonconfigurable_ethernet_pins[4],
+      esp32_nonconfigurable_ethernet_pins[5],
+      { (int8_t)es.eth_mdc,   true },
+      { (int8_t)es.eth_mdio,  true },
+      { (int8_t)es.eth_power, true },
+      { ((int8_t)0xFE),       false },
+    };
+    if (es.eth_clk_mode == ETH_CLOCK_GPIO0_IN) {
+      pinsToAllocate[9].pin = 0;
+      pinsToAllocate[9].isOutput = false;
+    } else if (es.eth_clk_mode == ETH_CLOCK_GPIO0_OUT) {
+      pinsToAllocate[9].pin = 0;
+      pinsToAllocate[9].isOutput = true;
+    } else if (es.eth_clk_mode == ETH_CLOCK_GPIO16_OUT) {
+      pinsToAllocate[9].pin = 16;
+      pinsToAllocate[9].isOutput = true;
+    } else if (es.eth_clk_mode == ETH_CLOCK_GPIO17_OUT) {
+      pinsToAllocate[9].pin = 17;
+      pinsToAllocate[9].isOutput = true;
+    } else {
+      DEBUG_PRINTF_P(PSTR("initE: Failing due to invalid eth_clk_mode (%d)\n"), es.eth_clk_mode);
+      return false;
+    }
 
-  if (!PinManager::allocateMultiplePins(pinsToAllocate, 10, PinOwner::Ethernet)) {
-    DEBUG_PRINTLN(F("initE: Failed to allocate ethernet pins"));
-    return false;
-  }
+    if (!PinManager::allocateMultiplePins(pinsToAllocate, 10, PinOwner::Ethernet)) {
+      DEBUG_PRINTLN(F("initE: Failed to allocate ethernet pins"));
+      return false;
+    }
 
-  /*
-  For LAN8720 the most correct way is to perform clean reset each time before init
-  applying LOW to power or nRST pin for at least 100 us (please refer to datasheet, page 59)
-  ESP_IDF > V4 implements it (150 us, lan87xx_reset_hw(esp_eth_phy_t *phy) function in 
-  /components/esp_eth/src/esp_eth_phy_lan87xx.c, line 280)
-  but ESP_IDF < V4 does not. Lets do it:
-  [not always needed, might be relevant in some EMI situations at startup and for hot resets]
-  */
-  #if ESP_IDF_VERSION_MAJOR==3
-  if(es.eth_power>0 && es.eth_type==ETH_PHY_LAN8720) {
-    pinMode(es.eth_power, OUTPUT);
-    digitalWrite(es.eth_power, 0);
-    delayMicroseconds(150);
-    digitalWrite(es.eth_power, 1);
-    delayMicroseconds(10);
-  }
-  #endif
+    #if ESP_IDF_VERSION_MAJOR==3
+    if(es.eth_power>0 && es.eth_type==ETH_PHY_LAN8720) {
+      pinMode(es.eth_power, OUTPUT);
+      digitalWrite(es.eth_power, 0);
+      delayMicroseconds(150);
+      digitalWrite(es.eth_power, 1);
+      delayMicroseconds(10);
+    }
+    #endif
 
 #if defined(ESP_IDF_VERSION) && (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0))
-  if (!ETH.begin(    // parameter order in V5 has changed
-                (eth_phy_type_t)   es.eth_type,
-                (int32_t) es.eth_address,
-                (int)     es.eth_mdc,
-                (int)     es.eth_mdio,
-                (int)     es.eth_power,
-                (eth_clock_mode_t) es.eth_clk_mode
-                )) {
+    ethBeginSuccess = ETH.begin(
+                  (eth_phy_type_t)   es.eth_type,
+                  (int32_t) es.eth_address,
+                  (int)     es.eth_mdc,
+                  (int)     es.eth_mdio,
+                  (int)     es.eth_power,
+                  (eth_clock_mode_t) es.eth_clk_mode
+                  );
 #else
-  if (!ETH.begin(
-                (uint8_t) es.eth_address,
-                (int)     es.eth_power,
-                (int)     es.eth_mdc,
-                (int)     es.eth_mdio,
-                (eth_phy_type_t)   es.eth_type,
-                (eth_clock_mode_t) es.eth_clk_mode
-                )) {
+    ethBeginSuccess = ETH.begin(
+                  (uint8_t) es.eth_address,
+                  (int)     es.eth_power,
+                  (int)     es.eth_mdc,
+                  (int)     es.eth_mdio,
+                  (eth_phy_type_t)   es.eth_type,
+                  (eth_clock_mode_t) es.eth_clk_mode
+                  );
 #endif
-    DEBUG_PRINTLN(F("initE: ETH.begin() failed"));
-    // de-allocate the allocated pins
-    for (managed_pin_type mpt : pinsToAllocate) {
-      PinManager::deallocatePin(mpt.pin, PinOwner::Ethernet);
+    if (!ethBeginSuccess) {
+      DEBUG_PRINTLN(F("initE: ETH.begin() failed"));
+      for (managed_pin_type mpt : pinsToAllocate) {
+        PinManager::deallocatePin(mpt.pin, PinOwner::Ethernet);
+      }
+      return false;
     }
-    return false;
   }
 
   // https://github.com/wled/WLED/issues/5247
